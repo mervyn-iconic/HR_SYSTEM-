@@ -89,3 +89,7 @@ Golden Marketing branding uses approximate colors sampled visually from the supp
 ### Install the exact company logo
 
 Save the original supplied company image as `hrms/static/company-logo.png` (a genuine PNG file), or `company-logo.jpg`, `company-logo.jpeg`, or `company-logo.webp` matching the actual file format. The app automatically serves that original file at `/company-logo` for the login page, sidebar, all page headers, record dialogs and browser icon. No source editing is needed; refresh the browser after replacing it. Until an original image file is installed, the existing recreated SVG remains the fallback. No original image was available as a downloadable attachment in the build workspace.
+
+### Apply code and original logo together on Windows
+
+Stop the running app, save the original company logo image on your computer, and run `scripts/Update-GoldenMarketing.ps1` with Windows PowerShell. It defaults to `D:\HR_SYSTEM--Main\hrms`; override with `-InstallPath` if needed. A file picker asks for the original logo. The updater stages the download, backs up the existing code and database to a sibling folder, installs the latest code without replacing the database or `.env`, selects the supplied image as the shared logo, and launches the application. Cancelling the file picker leaves the installation unchanged. The updater requires internet access and has not been executed on Windows in the build environment.
