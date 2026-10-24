@@ -14,7 +14,7 @@ def main():
         if probe.connect_ex(('127.0.0.1',port))==0:
             print(f'Port {port} is already in use. Stop the previous app or choose another PORT.')
             return
-    print('\nPeopleDesk | HR Management\n')
+    print('\nGolden Marketing | HR Management\n')
     if not os.environ.get('HR_ADMIN_PASSWORD'):
         while True:
             password=getpass.getpass('Choose your administrator password (at least 12 characters): ')

@@ -76,8 +76,12 @@ python -m unittest discover -s tests -v
 
 Tests use an isolated temporary SQLite database, and cover authentication, CSRF, all-table reads, CRUD, linked-record protection, duplicate emails, date constraints, payroll calculation and CSV export. MySQL DDL is compiled but a live MySQL integration test requires a server.
 
-## PeopleDesk interface improvements
+## Golden Marketing interface improvements
 
 The refreshed interface includes readable linked employee/department/job names, status badges and filters, 12-record pages, searchable linked names, setup shortcuts and responsive layouts. Status choices are validated by the API; legacy free-text statuses should be changed to a listed choice when editing. Empty optional payroll amounts default to zero. Sessions expire after eight hours and login attempts are limited to ten per minute per running process. This limit is intended for local use; shared deployment needs a persistent rate limiter.
 
 Verification includes API tests and a DOM integration exercise against the running server for sign-in, navigation and forms. A full browser visual review and execution of the Windows batch launcher on Windows were not available in the build environment.
+
+## Company branding
+
+Golden Marketing branding uses approximate colors sampled visually from the supplied references: navy `#201f30`, gold `#b89222`, ivory `#faf9f6`, and muted purple `#62618a`. The local SVG wordmark is a vector recreation from the screenshot, not the original company master artwork. Replace `static/golden-marketing.svg` with the official artwork when available, retaining the same filename or updating the two image references in the template. Branding changes do not change the database schema or employee records.

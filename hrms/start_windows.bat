@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title PeopleDesk HR Management
+title Golden Marketing HR Management
 where python >nul 2>&1
 if errorlevel 1 (
  echo Python was not found. Install Python 3.12 or newer and enable Add Python to PATH.
