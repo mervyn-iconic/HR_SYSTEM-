@@ -5,7 +5,7 @@ from threading import Lock
 from decimal import Decimal
 from functools import wraps
 from pathlib import Path
-from flask import Flask, request, jsonify, session, render_template, Response
+from flask import Flask, request, jsonify, session, render_template, Response, send_file
 from sqlalchemy import create_engine, event, select, func
 from sqlalchemy.exc import IntegrityError, StatementError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -40,6 +40,14 @@ def auth(fn):
         if request.method not in ('GET','HEAD') and request.headers.get('X-CSRF-Token')!=session.get('csrf'): return jsonify(error='Session token expired. Refresh the page.'),403
         return fn(*a,**kw)
     return wrapped
+@app.get('/company-logo')
+def company_logo():
+    # Use the original company artwork wherever it is installed.
+    static=Path(app.static_folder)
+    for filename in ('company-logo.png','company-logo.jpg','company-logo.jpeg','company-logo.webp'):
+        path=static/filename
+        if path.is_file(): return send_file(path,max_age=0)
+    return send_file(static/'golden-marketing.svg',max_age=0)
 @app.get('/')
 def index(): return render_template('index.html')
 @app.post('/api/login')

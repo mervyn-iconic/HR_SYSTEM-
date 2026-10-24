@@ -85,3 +85,7 @@ Verification includes API tests and a DOM integration exercise against the runni
 ## Company branding
 
 Golden Marketing branding uses approximate colors sampled visually from the supplied references: navy `#201f30`, gold `#b89222`, ivory `#faf9f6`, and muted purple `#62618a`. The local SVG wordmark is a vector recreation from the screenshot, not the original company master artwork. Replace `static/golden-marketing.svg` with the official artwork when available, retaining the same filename or updating the two image references in the template. Branding changes do not change the database schema or employee records.
+
+### Install the exact company logo
+
+Save the original supplied company image as `hrms/static/company-logo.png` (a genuine PNG file), or `company-logo.jpg`, `company-logo.jpeg`, or `company-logo.webp` matching the actual file format. The app automatically serves that original file at `/company-logo` for the login page, sidebar, all page headers, record dialogs and browser icon. No source editing is needed; refresh the browser after replacing it. Until an original image file is installed, the existing recreated SVG remains the fallback. No original image was available as a downloadable attachment in the build workspace.
