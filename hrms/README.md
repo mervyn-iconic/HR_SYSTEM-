@@ -2,6 +2,17 @@
 
 Flask + SQLAlchemy application based on the supplied HR Management System ERD and Database Report. The existing Django starter in the repository root is preserved; this application is independent.
 
+## Easiest Windows startup
+
+1. Extract the downloaded repository ZIP.
+2. Open `hrms` and double-click **start_windows.bat**.
+3. The launcher creates its own environment, installs dependencies, and asks you to choose and confirm an administrator password of at least 12 characters. Password input is hidden while typing.
+4. Your browser opens once the server is ready. Sign in with that password and keep the launcher window open.
+
+Python 3.12+ must be installed with **Add Python to PATH** enabled. First-time setup requires internet access to install dependencies. If a password is already configured in the environment, the launcher uses it. Without that configuration, choose a password each time you launch; it is not saved to disk. Your HR records persist in `hrms.db` independently of the login password.
+
+**Updating an existing installation:** stop the app with Ctrl+C and back up `hrms.db` first. Copy the new `hrms` folder contents into your existing `hrms` folder, keeping `hrms.db`, then run `start_windows.bat`. Downloaded source does not include your database. Do not delete your old folder before backing it up.
+
 ## Start locally
 
 Python 3.12+ recommended. Run in this folder:
@@ -55,7 +66,7 @@ URL-encode special characters in credentials. Tables are created on first start.
 
 The 16 business tables mirror the diagram, including its internal recruitment model: job applications reference an existing employee. External applicant recruitment would require an additional applicant entity. The ERD's `posting_id` references `job_posting.job_posting_id`; `approved_by` and `reviewer_id` reference employees. Department-to-manager is nullable to resolve the employee/department creation cycle. Foreign-key deletion is restricted to preserve history. Report statements about prior implementation/testing are source claims, not verification of this build.
 
-This is a local administrator application. Role-based employee accounts, leave allowance policy enforcement, automatic attendance hours, audit logs, file uploads, payroll tax calculations, rate limiting and production hosting are not implemented. Resume paths are text references, not file uploads. Review these requirements before organizational deployment. List endpoints currently load full tables and should be paginated for larger organizations.
+This is a local administrator application. Role-based employee accounts, leave allowance policy enforcement, automatic attendance hours, audit logs, file uploads, payroll tax calculations and production hosting are not implemented. Resume paths are text references, not file uploads. Review these requirements before organizational deployment. List endpoints currently load full tables and should be paginated for larger organizations.
 
 ## Verification
 
@@ -64,3 +75,9 @@ python -m unittest discover -s tests -v
 ```
 
 Tests use an isolated temporary SQLite database, and cover authentication, CSRF, all-table reads, CRUD, linked-record protection, duplicate emails, date constraints, payroll calculation and CSV export. MySQL DDL is compiled but a live MySQL integration test requires a server.
+
+## PeopleDesk interface improvements
+
+The refreshed interface includes readable linked employee/department/job names, status badges and filters, 12-record pages, searchable linked names, setup shortcuts and responsive layouts. Status choices are validated by the API; legacy free-text statuses should be changed to a listed choice when editing. Empty optional payroll amounts default to zero. Sessions expire after eight hours and login attempts are limited to ten per minute per running process. This limit is intended for local use; shared deployment needs a persistent rate limiter.
+
+Verification includes API tests and a DOM integration exercise against the running server for sign-in, navigation and forms. A full browser visual review and execution of the Windows batch launcher on Windows were not available in the build environment.

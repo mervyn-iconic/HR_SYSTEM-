@@ -28,6 +28,24 @@ class HRTests(unittest.TestCase):
         self.assertEqual(self.c.put('/api/records/employee/'+str(emp),json={'phone':'123'},headers={'X-CSRF-Token':self.token}).status_code,200)
         self.assertIn('test@example.com',self.c.get('/api/records/employee?format=csv').text)
         self.assertEqual(self.c.get('/api/summary').json['employee'],1)
+    def test_validation_and_status_choices(self):
+        schema=self.c.get('/api/schema').json
+        self.assertIn('Approved',schema['leave_request'][6]['options'])
+        self.assertEqual(self.post('department',{'department_name':'   '}).status_code,400)
+        emp,_,_=self.employee()
+        self.assertEqual(self.post('attendance',{'employee_id':emp,'attendance_date':'2026-10-24','status':'Made up'}).status_code,400)
+        self.assertEqual(self.post('payroll',{'employee_id':emp,'pay_period':'2026-10','basic_salary':'1000','allowances':'','deductions':'','payment_status':'Pending'}).status_code,200)
+        self.assertEqual(self.c.get('/api/records/payroll').json[0]['net_salary'],'1000.00')
+        self.assertEqual(self.post('benefit',{'benefit_name':'Invalid','amount':'NaN'}).status_code,400)
+    def test_login_throttle_and_logout(self):
+        from app import login_attempts
+        login_attempts.clear()
+        for _ in range(10):
+            self.assertEqual(self.c.post('/api/login',json={'password':'wrong'}).status_code,401)
+        self.assertEqual(self.c.post('/api/login',json={'password':'wrong'}).status_code,429)
+        login_attempts.clear()
+        self.assertEqual(self.c.post('/api/logout',headers={'X-CSRF-Token':self.token}).status_code,200)
+        self.assertEqual(self.c.get('/api/records/employee').status_code,401)
     def test_payroll_and_dates(self):
         emp,_,_=self.employee()
         self.assertEqual(self.post('payroll',{'employee_id':emp,'pay_period':'2026-10','basic_salary':'1000','allowances':'100','deductions':'50','net_salary':'9999','payment_status':'Pending'}).status_code,200)
