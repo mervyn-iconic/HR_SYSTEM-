@@ -13,3 +13,6 @@ body{color:var(--ink);background:var(--bg)}aside{background:var(--navy);color:#f
 .company-logo{aspect-ratio:840/426;object-fit:contain;object-position:center;background:#202020;width:210px;max-height:none;height:auto;border-radius:5px}
 .brand .company-logo{width:210px;height:auto}.login-card .company-logo{width:260px;height:auto;max-height:none;padding:0;background:#202020}.header-logo{width:112px;height:57px;padding:0}.dialog-logo{width:150px;height:76px;padding:0}
 @media(max-width:600px){.brand .company-logo{width:150px!important;height:auto}.header-logo{width:80px;height:41px}}
+
+/* HR sections grouped by business function */
+.nav-group{margin:8px 0;border-top:1px solid #ffffff1c;padding-top:8px}.nav-group summary{cursor:pointer;padding:12px 10px;font-size:12px;font-weight:700;line-height:1.5;color:#f3d883;list-style-position:inside}.nav-group summary:focus-visible{outline:2px solid #f3d883;outline-offset:2px}.nav-group>div{padding-left:12px}.nav-group button{font-size:12px;padding:10px 12px;width:100%}.nav-group:has(button.active)>summary{color:white}nav{padding-bottom:16px}
