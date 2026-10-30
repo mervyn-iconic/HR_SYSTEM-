@@ -203,6 +203,7 @@ def summary():
     with engine.connect() as c:
         counts={n:c.scalar(select(func.count()).select_from(t)) for n,t in tables.items()}
         counts['pending_leave']=c.scalar(select(func.count()).select_from(tables['leave_request']).where(tables['leave_request'].c.status=='Pending'))
+        counts['pending_payroll']=c.scalar(select(func.count()).select_from(tables['payroll']).where(tables['payroll'].c.payment_status=='Pending'))
         counts['departments']=[dict(r) for r in c.execute(select(tables['department'].c.department_name,func.count(tables['employee'].c.employee_id).label('count')).select_from(tables['department'].outerjoin(tables['employee'],tables['employee'].c.department_id==tables['department'].c.department_id)).group_by(tables['department'].c.department_id,tables['department'].c.department_name)).mappings()]
     return jsonify(counts)
 @app.after_request
