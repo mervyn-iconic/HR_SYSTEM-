@@ -33,7 +33,7 @@ try {
     Get-ChildItem -LiteralPath $source -Force |
         Where-Object { $_.Name -notin @('hrms.db','.env','.venv','.venv-hr') } |
         ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force }
-    Write-Host 'Update complete. Bulk CSV tools, compact layout, logo and category pages installed (UI 20261030.15).' -ForegroundColor Green
+    Write-Host 'Update complete. Bulk CSV tools, compact layout, logo and category pages installed (UI 20261030.16).' -ForegroundColor Green
     Start-Process -FilePath (Join-Path $InstallPath 'start_windows.bat') -WorkingDirectory $InstallPath
     Write-Host "When the app starts, open http://127.0.0.1:$port and press Ctrl+Shift+R."
 } catch {
