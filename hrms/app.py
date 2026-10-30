@@ -48,6 +48,11 @@ def company_logo():
         path=static/filename
         if path.is_file(): return send_file(path,max_age=0)
     return send_file(static/'golden-marketing.svg',max_age=0)
+@app.after_request
+def refresh_ui_assets(response):
+    if request.path in ('/', '/company-logo', '/static/app.js', '/static/style.css'):
+        response.headers['Cache-Control']='no-store'
+    return response
 @app.get('/')
 def index(): return render_template('index.html')
 @app.post('/api/login')
