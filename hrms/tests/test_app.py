@@ -6,6 +6,7 @@ from app import app,metadata,engine
 class HRTests(unittest.TestCase):
     def setUp(self):
         with engine.begin() as c:
+            c.execute(metadata.tables['department'].update().values(manager_id=None))
             for t in reversed(list(metadata.tables.values())):c.execute(t.delete())
         self.c=app.test_client()
         self.token=self.c.post('/api/login',json={'password':'test-only-password'}).json['csrf']
@@ -87,4 +88,58 @@ class HRTests(unittest.TestCase):
         self.assertEqual(len([n for n in archive.namelist() if n.endswith('.csv')]),16)
         self.assertIn('test@example.com',archive.read('employee.csv').decode('utf-8-sig'))
         self.assertEqual(self.bulk('job','job_title,description\n"Example, quoted","Two lines\nare valid"',False).status_code,200)
+    def archive_import(self,raw,preview=True,token=True):
+        import io
+        return self.c.post('/api/import-all',data={'file':(io.BytesIO(raw),'hr.zip'),'preview':str(preview).lower()},headers={'X-CSRF-Token':self.token} if token else {})
+    def modify_zip(self,raw,name,text):
+        import io,zipfile
+        out=io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(raw)) as src,zipfile.ZipFile(out,'w') as dst:
+            for item in src.namelist():dst.writestr(item,text if item==name else src.read(item))
+        return out.getvalue()
+    def test_archive_roundtrip_preview_cycles_and_updates(self):
+        emp,dep,_=self.employee()
+        self.c.put('/api/records/department/'+str(dep),json={'manager_id':emp,'description':'=formula-like text'},headers={'X-CSRF-Token':self.token})
+        raw=self.c.get('/api/export-all').data
+        preview=self.archive_import(raw)
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(preview.json['updated'],3)
+        self.assertEqual(self.c.get('/api/records/department').json[0]['manager_id'],emp)
+        with engine.begin() as c:
+            c.execute(metadata.tables['department'].update().values(manager_id=None))
+            for table in reversed(list(metadata.tables.values())):c.execute(table.delete())
+        self.assertEqual(self.archive_import(raw).json['created'],3)
+        self.assertEqual(self.c.get('/api/summary').json['employee'],0)
+        result=self.archive_import(raw,False)
+        self.assertEqual(result.status_code,200,result.json)
+        self.assertEqual(self.c.get('/api/records/employee').json[0]['employee_id'],emp)
+        department=self.c.get('/api/records/department').json[0]
+        self.assertEqual(department['manager_id'],emp)
+        self.assertEqual(department['description'],'=formula-like text')
+        self.post('job',{'job_title':'Keep this extra job'})
+        self.assertEqual(self.archive_import(raw,False).json['updated'],3)
+        self.assertEqual(self.c.get('/api/summary').json['job'],2)
+        self.assertEqual(self.c.get('/api/summary').json['employee'],1)
+    def test_archive_failure_rolls_back_every_section(self):
+        self.employee()
+        self.post('benefit',{'benefit_name':'Insurance','amount':'100'})
+        raw=self.c.get('/api/export-all').data
+        bad=self.modify_zip(raw,'benefit.csv','benefit_id,benefit_name,description,amount,frequency\n1,Insurance,,-100,')
+        bad=self.modify_zip(bad,'job.csv','job_id,job_title,description,min_salary,max_salary,job_level\n1,Changed title,,,,')
+        result=self.archive_import(bad,False)
+        self.assertEqual(result.status_code,400,result.json)
+        self.assertIn('benefit.csv',result.json['error'])
+        self.assertEqual(self.c.get('/api/records/job').json[0]['job_title'],'Engineer')
+        self.assertEqual(self.c.get('/api/records/benefit').json[0]['amount'],'100.00')
+    def test_archive_structure_and_auth(self):
+        import io,zipfile
+        self.employee();raw=self.c.get('/api/export-all').data
+        self.assertEqual(self.archive_import(raw,token=False).status_code,403)
+        self.assertEqual(app.test_client().post('/api/import-all').status_code,401)
+        self.assertEqual(self.archive_import(b'not a zip').status_code,400)
+        out=io.BytesIO()
+        with zipfile.ZipFile(out,'w') as archive:archive.writestr('../employee.csv','bad')
+        self.assertEqual(self.archive_import(out.getvalue()).status_code,400)
+        bad=self.modify_zip(raw,'employee.csv','employee_id,first_name\n1,Invalid')
+        self.assertEqual(self.archive_import(bad).status_code,400)
 if __name__=='__main__':unittest.main()
