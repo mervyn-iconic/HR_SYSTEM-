@@ -93,3 +93,9 @@ Save the original supplied company image as `hrms/static/company-logo.png` (a ge
 ### Apply code and original logo together on Windows
 
 Stop the running app, save the original company logo image on your computer, and run `scripts/Update-GoldenMarketing.ps1` with Windows PowerShell. It defaults to `D:\HR_SYSTEM--Main\hrms`; override with `-InstallPath` if needed. A file picker asks for the original logo. The updater stages the download, backs up the existing code and database to a sibling folder, installs the latest code without replacing the database or `.env`, selects the supplied image as the shared logo, and launches the application. Cancelling the file picker leaves the installation unchanged. The updater requires internet access and has not been executed on Windows in the build environment.
+
+## Bulk CSV tools
+
+Every subsection has **Import CSV** and **Export all records**. The page header also has **Export all sections**, which downloads a ZIP with all 16 CSV tables. Exports include every record, regardless of the current search or page.
+
+For imports, download the subsection template, fill in one new record per row, then select **Validate file** and **Import records**. Files are UTF-8 CSV, at most 500 KB and 5,000 records. Do not add the table's primary ID column. Use existing numeric IDs in linked columns; the import dialog links to those sections' CSV exports. Create departments and jobs before employees, then attendance, payroll and other dependent records. Payroll net salary is calculated automatically. Imports create new rows; they do not overwrite existing records. Any failed row rejects the entire file, with its row number shown. Validation saves nothing. The all-section export is not a database restore file.

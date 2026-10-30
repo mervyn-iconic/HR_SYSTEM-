@@ -52,4 +52,39 @@ class HRTests(unittest.TestCase):
         self.assertEqual(self.c.get('/api/records/payroll').json[0]['net_salary'],'1050.00')
         self.assertEqual(self.post('training',{'training_name':'Bad dates','start_date':'2026-10-20','end_date':'2026-10-01'}).status_code,400)
         self.assertEqual(self.post('attendance',{'employee_id':9999,'attendance_date':'2026-10-24','status':'Present'}).status_code,400)
+    def bulk(self,name,text,dry_run=True):
+        return self.c.post('/api/import/'+name,json={'csv':text,'dry_run':dry_run},headers={'X-CSRF-Token':self.token})
+    def test_bulk_preview_commit_and_atomic_failure(self):
+        text='department_name,description\nFinance,First\nOperations,Second\n'
+        self.assertEqual(self.bulk('department',text).json['count'],2)
+        self.assertEqual(self.c.get('/api/summary').json['department'],0)
+        self.assertEqual(self.bulk('department',text,False).json['count'],2)
+        self.assertEqual(self.c.get('/api/summary').json['department'],2)
+        bad='department_name\nNew team\nFinance\n'
+        result=self.bulk('department',bad,False)
+        self.assertEqual(result.status_code,400)
+        self.assertIn('row 3',result.json['error'])
+        self.assertEqual(self.c.get('/api/summary').json['department'],2)
+    def test_bulk_validation_and_permissions(self):
+        self.assertEqual(app.test_client().post('/api/import/job',json={'csv':'job_title\nA'}).status_code,401)
+        self.assertEqual(self.c.post('/api/import/job',json={'csv':'job_title\nA'}).status_code,403)
+        for text in ['description\nMissing name','job_title,job_title\nA,B','job_id,job_title\n1,A','job_title,description\nA,B,C']:
+            self.assertEqual(self.bulk('job',text,False).status_code,400)
+        bad='employee_id,attendance_date,status\n9999,2026-10-30,Present'
+        self.assertEqual(self.bulk('attendance',bad,False).status_code,400)
+        self.assertEqual(self.c.get('/api/summary').json['job'],0)
+    def test_bulk_payroll_and_all_templates_exports(self):
+        import zipfile,io
+        emp,_,_=self.employee()
+        text=f'employee_id,pay_period,basic_salary,allowances,deductions,payment_status\n{emp},2026-11,1000,100,50,Pending'
+        self.assertEqual(self.bulk('payroll',text,False).status_code,200)
+        self.assertEqual(self.c.get('/api/records/payroll').json[0]['net_salary'],'1050.00')
+        for name in metadata.tables:
+            response=self.c.get('/api/import/'+name+'/template')
+            self.assertEqual(response.status_code,200)
+            self.assertNotIn(name+'_id',response.text.split(',')[0])
+        archive=zipfile.ZipFile(io.BytesIO(self.c.get('/api/export-all').data))
+        self.assertEqual(len([n for n in archive.namelist() if n.endswith('.csv')]),16)
+        self.assertIn('test@example.com',archive.read('employee.csv').decode('utf-8-sig'))
+        self.assertEqual(self.bulk('job','job_title,description\n"Example, quoted","Two lines\nare valid"',False).status_code,200)
 if __name__=='__main__':unittest.main()

@@ -1,4 +1,4 @@
-import os, secrets, csv, io
+import os, secrets, csv, io, zipfile
 from datetime import date, time, timedelta
 from time import monotonic
 from threading import Lock
@@ -81,6 +81,35 @@ def serialize(row): return {k:str(v) if isinstance(v,(date,time,Decimal)) else v
 def get_table(name):
     if name not in tables: raise ValueError('Unknown table')
     return tables[name]
+def record_values(name,t,data,conn,record_id=None):
+    pk=list(t.primary_key)[0]
+    values={}
+    for key,value in data.items():
+        if key not in t.c or t.c[key].primary_key: raise ValueError('Unknown or read-only field: '+key)
+        c=t.c[key]
+        if value in ('',None): value=None
+        elif str(c.type)=='DATE': value=date.fromisoformat(value)
+        elif str(c.type)=='TIME': value=time.fromisoformat(value)
+        elif str(c.type)=='INTEGER': value=int(value)
+        elif str(c.type).startswith('NUMERIC'): value=Decimal(str(value))
+        else:
+            value=str(value).strip()
+            if len(value)>255: raise ValueError(key+' must be at most 255 characters.')
+        if not c.nullable and not c.primary_key and value is None:
+            if c.server_default is not None: value=Decimal('0')
+            else: raise ValueError(key.replace('_',' ')+' is required.')
+        if isinstance(value,str) and not value and not c.nullable: raise ValueError(key+' cannot be blank.')
+        if isinstance(value,Decimal) and not value.is_finite(): raise ValueError(key+' must be a finite number.')
+        options=STATUS_OPTIONS.get(name,{}).get(key)
+        if options and value not in options: raise ValueError('Choose a valid '+key+'.')
+        values[key]=value
+    if name=='employee' and 'email' in values and ('@' not in (values['email'] or '')): raise ValueError('Enter a valid email address.')
+    if name=='payroll':
+        merged=dict(conn.execute(select(t).where(pk==record_id)).mappings().first() or {}) if record_id else {}
+        merged.update(values)
+        values['net_salary']=Decimal(str(merged.get('basic_salary') or 0))+Decimal(str(merged.get('allowances') or 0))-Decimal(str(merged.get('deductions') or 0))
+    return values
+
 @app.route('/api/records/<name>',methods=['GET','POST'])
 @app.route('/api/records/<name>/<int:record_id>',methods=['PUT','DELETE'])
 @auth
@@ -100,36 +129,74 @@ def records(name,record_id=None):
             if request.method=='DELETE': conn.execute(t.delete().where(pk==record_id));return jsonify(ok=True)
             data=request.get_json(silent=True) or {}; values={}
             if not isinstance(data,dict): raise ValueError('Provide a record object.')
-            for key,value in data.items():
-                if key not in t.c or t.c[key].primary_key: raise ValueError('Unknown or read-only field: '+key)
-                c=t.c[key]
-                if value in ('',None): value=None
-                elif str(c.type)=='DATE': value=date.fromisoformat(value)
-                elif str(c.type)=='TIME': value=time.fromisoformat(value)
-                elif str(c.type)=='INTEGER': value=int(value)
-                elif str(c.type).startswith('NUMERIC'): value=Decimal(str(value))
-                else:
-                    value=str(value).strip()
-                    if len(value)>255: raise ValueError(key+' must be at most 255 characters.')
-                if not c.nullable and not c.primary_key and value is None:
-                    if c.server_default is not None: value=Decimal('0')
-                    else: raise ValueError(key.replace('_',' ')+' is required.')
-                if isinstance(value,str) and not value and not c.nullable: raise ValueError(key+' cannot be blank.')
-                if isinstance(value,Decimal) and not value.is_finite(): raise ValueError(key+' must be a finite number.')
-                options=STATUS_OPTIONS.get(name,{}).get(key)
-                if options and value not in options: raise ValueError('Choose a valid '+key+'.')
-                values[key]=value
-            if name=='employee' and 'email' in values and ('@' not in (values['email'] or '')): raise ValueError('Enter a valid email address.')
-            if name=='payroll':
-                merged=dict(conn.execute(select(t).where(pk==record_id)).mappings().first() or {}) if record_id else {}
-                merged.update(values)
-                values['net_salary']=Decimal(str(merged.get('basic_salary') or 0))+Decimal(str(merged.get('allowances') or 0))-Decimal(str(merged.get('deductions') or 0))
+            values=record_values(name,t,data,conn,record_id)
             if request.method=='POST':
                 result=conn.execute(t.insert().values(**values)); record_id=result.inserted_primary_key[0]
             else: conn.execute(t.update().where(pk==record_id).values(**values))
             return jsonify(id=record_id)
     except IntegrityError: return jsonify(error='This change violates a required field, unique value, date/range rule, or linked record. Remove dependent records before deleting.'),400
     except (ValueError,StatementError,TypeError,ArithmeticError) as e: return jsonify(error='Invalid input: '+str(e).split('\n')[0]),400
+def csv_text(t,rows):
+    out=io.StringIO();w=csv.DictWriter(out,fieldnames=[c.name for c in t.c]);w.writeheader()
+    for row in rows:
+        w.writerow({k:("'"+v if isinstance(v,str) and v.startswith(('=','+','-','@','\t','\r')) else v) for k,v in serialize(row).items()})
+    return '\ufeff'+out.getvalue()
+@app.errorhandler(413)
+def upload_too_large(error):
+    return jsonify(error='Upload too large. Use a CSV of at most 500 KB.'),413
+@app.get('/api/export-all')
+@auth
+def export_all():
+    output=io.BytesIO()
+    with engine.connect() as conn,zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
+        for name,t in tables.items():
+            archive.writestr(name+'.csv',csv_text(t,conn.execute(select(t).order_by(list(t.primary_key)[0])).mappings()))
+        archive.writestr('README.txt','HR CSV export. Contains IDs for identifying linked records. Imports create new records: use the CSV templates, omit primary IDs, and use existing linked-record IDs. Import departments and jobs before employees, then dependent sections. This archive is an export, not a database restore file.')
+    output.seek(0)
+    return send_file(output,mimetype='application/zip',as_attachment=True,download_name='hr-all-sections.zip')
+@app.get('/api/import/<name>/template')
+@auth
+def import_template(name):
+    try:
+        t=get_table(name);out=io.StringIO();csv.writer(out).writerow([c.name for c in t.c if not c.primary_key and c.name!='net_salary'])
+        return Response('\ufeff'+out.getvalue(),mimetype='text/csv',headers={'Content-Disposition':f'attachment; filename={name}-template.csv'})
+    except ValueError: return jsonify(error='Unknown table.'),404
+@app.post('/api/import/<name>')
+@auth
+def import_csv(name):
+    line=1
+    try:
+        t=get_table(name);data=request.get_json(silent=True)
+        if not isinstance(data,dict) or not isinstance(data.get('csv'),str): raise ValueError('Upload a UTF-8 CSV file.')
+        dry_run=data.get('dry_run',True)
+        if not isinstance(dry_run,bool): raise ValueError('Invalid preview option.')
+        reader=csv.DictReader(io.StringIO(data['csv'].lstrip('\ufeff')),strict=True)
+        fields=reader.fieldnames
+        if not fields or len(fields)!=len(set(fields)): raise ValueError('CSV needs unique column headers.')
+        allowed={c.name for c in t.c if not c.primary_key}
+        if set(fields)-allowed: raise ValueError('Unknown or read-only columns: '+', '.join(sorted(set(fields)-allowed)))
+        required={c.name for c in t.c if not c.primary_key and not c.nullable and c.server_default is None and c.name!='net_salary'}
+        if required-set(fields): raise ValueError('Missing required columns: '+', '.join(sorted(required-set(fields))))
+        count=0
+        with engine.connect() as conn:
+            transaction=conn.begin()
+            try:
+                for row in reader:
+                    line=reader.line_num
+                    if count>=5000: raise ValueError('Maximum 5,000 records per file.')
+                    if None in row or any(v is None for v in row.values()): raise ValueError('Row has a different number of columns than the header.')
+                    if not any(v.strip() for v in row.values()): continue
+                    values=record_values(name,t,row,conn)
+                    conn.execute(t.insert().values(**values));count+=1
+                if not count: raise ValueError('CSV contains no records.')
+                if dry_run: transaction.rollback()
+                else: transaction.commit()
+            except Exception:
+                transaction.rollback();raise
+        return jsonify(count=count,preview=dry_run,message=f'{count} records validated. Nothing saved.' if dry_run else f'{count} records imported.')
+    except IntegrityError: return jsonify(error=f'CSV row {line}: duplicate, missing required value, invalid range/date order, or linked ID not found. Nothing was imported.'),400
+    except (ValueError,StatementError,TypeError,ArithmeticError,csv.Error) as e: return jsonify(error=f'CSV row {line}: '+str(e).split('\n')[0]+'. Nothing was imported.'),400
+
 @app.get('/api/summary')
 @auth
 def summary():
