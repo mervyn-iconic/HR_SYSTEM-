@@ -14,7 +14,7 @@ def main():
         if probe.connect_ex(('127.0.0.1',port))==0:
             print(f'Port {port} is already in use. Stop the previous app or choose another PORT.')
             return
-    print('\nGolden Marketing | HR Management | UI 20261030.14\n')
+    print('\nGolden Marketing | HR Management | UI 20261030.15\n')
     print('Installation: '+os.path.dirname(os.path.abspath(__file__)))
     if not os.environ.get('HR_ADMIN_PASSWORD'):
         while True:

@@ -103,3 +103,7 @@ For imports, download the subsection template, fill in one new record per row, t
 ## Import all sections from Overview
 
 Upload the ZIP produced by **Export all sections** (10 MB maximum, 20 MB uncompressed, 5,000 rows per table and 20,000 total). All 16 CSV files must be present at the top level with unchanged headers, including primary IDs. Validate first to inspect new/update counts per section, then confirm. Matching primary IDs update records; other IDs create records. Records absent from the ZIP are retained. Keep linked IDs consistent; department managers are applied after employees to handle that circular relationship. Any validation or database failure rolls back the entire import. This restores record data, not account settings or uploaded files.
+
+### Date formats in imports
+
+Date fields accept `YYYY-MM-DD`, `DD/MM/YYYY` and `DD-MM-YYYY`, including surrounding whitespace. Slash and day-first hyphen formats always mean day/month/year: `01/02/2026` means 1 February. Invalid calendar dates are rejected with the field name and CSV row; the entire file is rolled back. This applies to per-section CSV and Overview ZIP imports.
