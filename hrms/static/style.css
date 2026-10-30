@@ -8,3 +8,8 @@ body{color:var(--ink);background:var(--bg)}aside{background:var(--navy);color:#f
 
 /* One original company logo across all application views. */
 .company-logo,.header-logo,.dialog-logo{object-fit:contain;background:#202020;border-radius:5px}.company-logo{aspect-ratio:178 / 148;max-height:145px;width:178px!important;padding:0!important}.brand{align-items:center}.brand-caption{text-align:center}.login-card .company-logo{margin:0 auto 24px;max-height:148px}.header-logo{width:72px;height:60px;padding:3px;flex-shrink:0}header{gap:20px}header>span:first-of-type{flex:1}.dialog-logo{width:82px;height:68px;margin-bottom:18px}.brand .company-logo{object-position:center}#today{white-space:nowrap}@media(max-width:600px){.brand .company-logo{width:110px!important;height:90px}.header-logo{width:54px;height:45px}header{gap:10px}#today{font-size:10px}.brand-caption{max-width:none}}
+
+/* Golden Marketing landscape logo */
+.company-logo{aspect-ratio:840/426;object-fit:contain;object-position:center;background:#202020;width:210px;max-height:none;height:auto;border-radius:5px}
+.brand .company-logo{width:210px;height:auto}.login-card .company-logo{width:260px;height:auto;max-height:none;padding:0;background:#202020}.header-logo{width:112px;height:57px;padding:0}.dialog-logo{width:150px;height:76px;padding:0}
+@media(max-width:600px){.brand .company-logo{width:150px!important;height:auto}.header-logo{width:80px;height:41px}}
