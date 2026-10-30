@@ -69,7 +69,7 @@ class HRTests(unittest.TestCase):
     def test_bulk_validation_and_permissions(self):
         self.assertEqual(app.test_client().post('/api/import/job',json={'csv':'job_title\nA'}).status_code,401)
         self.assertEqual(self.c.post('/api/import/job',json={'csv':'job_title\nA'}).status_code,403)
-        for text in ['description\nMissing name','job_title,job_title\nA,B','job_id,job_title\n1,A','job_title,description\nA,B,C']:
+        for text in ['description\nMissing name','job_title,job_title\nA,B','job_id,job_title\n-1,A','job_title,description\nA,B,C']:
             self.assertEqual(self.bulk('job',text,False).status_code,400)
         bad='employee_id,attendance_date,status\n9999,2026-10-30,Present'
         self.assertEqual(self.bulk('attendance',bad,False).status_code,400)
@@ -88,6 +88,23 @@ class HRTests(unittest.TestCase):
         self.assertEqual(len([n for n in archive.namelist() if n.endswith('.csv')]),16)
         self.assertIn('test@example.com',archive.read('employee.csv').decode('utf-8-sig'))
         self.assertEqual(self.bulk('job','job_title,description\n"Example, quoted","Two lines\nare valid"',False).status_code,200)
+    def test_section_export_csv_reimport_ids(self):
+        emp,_,_=self.employee()
+        text=self.c.get('/api/records/employee?format=csv').text.replace('Test,Person','Updated,Person')
+        preview=self.bulk('employee',text)
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(preview.json['updated'],1)
+        self.assertEqual(self.c.get('/api/records/employee').json[0]['first_name'],'Test')
+        result=self.bulk('employee',text,False)
+        self.assertEqual(result.status_code,200,result.json)
+        self.assertEqual(result.json['created'],0)
+        self.assertEqual(self.c.get('/api/records/employee').json[0]['first_name'],'Updated')
+        self.assertEqual(self.c.get('/api/summary').json['employee'],1)
+        self.assertEqual(self.bulk('job','job_id,job_title\n100,New job',False).json['created'],1)
+        self.assertEqual(self.bulk('job','job_id,job_title\n,Generated ID',False).json['created'],1)
+        bad='job_id,job_title\n100,Should roll back\n100,Repeated ID'
+        self.assertEqual(self.bulk('job',bad,False).status_code,400)
+        self.assertEqual(next(r['job_title'] for r in self.c.get('/api/records/job').json if r['job_id']==100),'New job')
     def archive_import(self,raw,preview=True,token=True):
         import io
         return self.c.post('/api/import-all',data={'file':(io.BytesIO(raw),'hr.zip'),'preview':str(preview).lower()},headers={'X-CSRF-Token':self.token} if token else {})

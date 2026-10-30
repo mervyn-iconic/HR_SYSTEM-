@@ -156,7 +156,7 @@ def export_all():
             escaped[name]={str(r[pk]):[k for k,v in serialize(r).items() if isinstance(v,str) and v.startswith(('=','+','-','@','\t','\r'))] for r in rows}
             archive.writestr(name+'.csv',csv_text(t,rows))
         archive.writestr('manifest.json',json.dumps({'version':1,'escaped_cells':escaped}))
-        archive.writestr('README.txt','Upload this ZIP through Overview > Import all sections. Matching primary IDs update existing records; new IDs create records. Existing records absent from the ZIP are kept. Keep all 16 CSV files, their headers and linked IDs. Validate first and review counts before importing. Per-section CSV imports create new records and use templates without primary IDs.')
+        archive.writestr('README.txt','Upload this ZIP through Overview > Import all sections. Matching primary IDs update existing records; new IDs create records. Existing records absent from the ZIP are kept. Keep all 16 CSV files, their headers and linked IDs. Validate first and review counts before importing. Per-section imports accept exported CSVs with IDs or templates without IDs. Matching IDs update records; new or blank IDs create records.')
     output.seek(0)
     return send_file(output,mimetype='application/zip',as_attachment=True,download_name='hr-all-sections.zip')
 @app.post('/api/import-all')
@@ -192,11 +192,12 @@ def import_csv(name):
         reader=csv.DictReader(io.StringIO(data['csv'].lstrip('\ufeff')),strict=True)
         fields=reader.fieldnames
         if not fields or len(fields)!=len(set(fields)): raise ValueError('CSV needs unique column headers.')
-        allowed={c.name for c in t.c if not c.primary_key}
+        allowed={c.name for c in t.c}
         if set(fields)-allowed: raise ValueError('Unknown or read-only columns: '+', '.join(sorted(set(fields)-allowed)))
         required={c.name for c in t.c if not c.primary_key and not c.nullable and c.server_default is None and c.name!='net_salary'}
         if required-set(fields): raise ValueError('Missing required columns: '+', '.join(sorted(required-set(fields))))
-        count=0
+        count=created=updated=0
+        pk=list(t.primary_key)[0];seen=set()
         with engine.connect() as conn:
             transaction=conn.begin()
             try:
@@ -205,14 +206,25 @@ def import_csv(name):
                     if count>=5000: raise ValueError('Maximum 5,000 records per file.')
                     if None in row or any(v is None for v in row.values()): raise ValueError('Row has a different number of columns than the header.')
                     if not any(v.strip() for v in row.values()): continue
-                    values=record_values(name,t,row,conn)
-                    conn.execute(t.insert().values(**values));count+=1
+                    raw_id=row.pop(pk.name,'').strip()
+                    record_id=int(raw_id) if raw_id else None
+                    if record_id is not None:
+                        if record_id<1 or record_id in seen: raise ValueError('Record IDs must be positive and unique within the CSV.')
+                        seen.add(record_id)
+                    exists=record_id is not None and conn.execute(select(pk).where(pk==record_id)).first() is not None
+                    values=record_values(name,t,row,conn,record_id if exists else None)
+                    if exists:
+                        conn.execute(t.update().where(pk==record_id).values(**values));updated+=1
+                    else:
+                        if record_id is not None: values[pk.name]=record_id
+                        conn.execute(t.insert().values(**values));created+=1
+                    count+=1
                 if not count: raise ValueError('CSV contains no records.')
                 if dry_run: transaction.rollback()
                 else: transaction.commit()
             except Exception:
                 transaction.rollback();raise
-        return jsonify(count=count,preview=dry_run,message=f'{count} records validated. Nothing saved.' if dry_run else f'{count} records imported.')
+        return jsonify(count=count,created=created,updated=updated,preview=dry_run,message=f'{count} records validated: {created} new, {updated} updates. Nothing saved.' if dry_run else f'{count} records imported: {created} created, {updated} updated.')
     except IntegrityError: return jsonify(error=f'CSV row {line}: duplicate, missing required value, invalid range/date order, or linked ID not found. Nothing was imported.'),400
     except (ValueError,StatementError,TypeError,ArithmeticError,csv.Error) as e: return jsonify(error=f'CSV row {line}: '+str(e).split('\n')[0]+'. Nothing was imported.'),400
 
