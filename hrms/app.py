@@ -1,4 +1,4 @@
-import os, secrets, csv, io, zipfile
+import os, secrets, csv, io, zipfile, json
 from datetime import date, time, timedelta
 from time import monotonic
 from threading import Lock
@@ -12,7 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from schema import metadata, tables
 app=Flask(__name__)
 app.secret_key=os.environ.get('SECRET_KEY') or secrets.token_hex(32)
-app.config.update(SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE='Strict',MAX_CONTENT_LENGTH=1024*1024)
+app.config.update(SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE='Strict',MAX_CONTENT_LENGTH=12*1024*1024)
 app.config['PERMANENT_SESSION_LIFETIME']=timedelta(hours=8)
 login_attempts=[]
 login_lock=Lock()
@@ -143,17 +143,35 @@ def csv_text(t,rows):
     return '\ufeff'+out.getvalue()
 @app.errorhandler(413)
 def upload_too_large(error):
-    return jsonify(error='Upload too large. Use a CSV of at most 500 KB.'),413
+    return jsonify(error='Upload too large. Use a CSV of at most 500 KB or an all-section ZIP of at most 10 MB.'),413
 @app.get('/api/export-all')
 @auth
 def export_all():
     output=io.BytesIO()
     with engine.connect() as conn,zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED) as archive:
+        escaped={}
         for name,t in tables.items():
-            archive.writestr(name+'.csv',csv_text(t,conn.execute(select(t).order_by(list(t.primary_key)[0])).mappings()))
-        archive.writestr('README.txt','HR CSV export. Contains IDs for identifying linked records. Imports create new records: use the CSV templates, omit primary IDs, and use existing linked-record IDs. Import departments and jobs before employees, then dependent sections. This archive is an export, not a database restore file.')
+            rows=list(conn.execute(select(t).order_by(list(t.primary_key)[0])).mappings())
+            pk=list(t.primary_key)[0].name
+            escaped[name]={str(r[pk]):[k for k,v in serialize(r).items() if isinstance(v,str) and v.startswith(('=','+','-','@','\t','\r'))] for r in rows}
+            archive.writestr(name+'.csv',csv_text(t,rows))
+        archive.writestr('manifest.json',json.dumps({'version':1,'escaped_cells':escaped}))
+        archive.writestr('README.txt','Upload this ZIP through Overview > Import all sections. Matching primary IDs update existing records; new IDs create records. Existing records absent from the ZIP are kept. Keep all 16 CSV files, their headers and linked IDs. Validate first and review counts before importing. Per-section CSV imports create new records and use templates without primary IDs.')
     output.seek(0)
     return send_file(output,mimetype='application/zip',as_attachment=True,download_name='hr-all-sections.zip')
+@app.post('/api/import-all')
+@auth
+def import_all():
+    from archive_io import import_archive
+    try:
+        upload=request.files.get('file')
+        if upload is None: raise ValueError('Select an exported ZIP file.')
+        preview=request.form.get('preview','true')
+        if preview not in ('true','false'): raise ValueError('Invalid preview option.')
+        result=import_archive(engine,tables,record_values,upload.read(10*1024*1024+1),preview=='true')
+        return jsonify(result)
+    except (ValueError,zipfile.BadZipFile,NotImplementedError) as exc:
+        return jsonify(error=str(exc)+ ' Nothing was imported.'),400
 @app.get('/api/import/<name>/template')
 @auth
 def import_template(name):
@@ -168,6 +186,7 @@ def import_csv(name):
     try:
         t=get_table(name);data=request.get_json(silent=True)
         if not isinstance(data,dict) or not isinstance(data.get('csv'),str): raise ValueError('Upload a UTF-8 CSV file.')
+        if len(data['csv'].encode('utf-8'))>500*1024: raise ValueError('CSV must be at most 500 KB.')
         dry_run=data.get('dry_run',True)
         if not isinstance(dry_run,bool): raise ValueError('Invalid preview option.')
         reader=csv.DictReader(io.StringIO(data['csv'].lstrip('\ufeff')),strict=True)
