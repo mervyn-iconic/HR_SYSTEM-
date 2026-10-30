@@ -5,6 +5,8 @@ os.environ['HR_ADMIN_PASSWORD']='test-only-password'
 from app import app,metadata,engine
 class HRTests(unittest.TestCase):
     def setUp(self):
+        from app import login_attempts
+        login_attempts.clear()
         with engine.begin() as c:
             c.execute(metadata.tables['department'].update().values(manager_id=None))
             for t in reversed(list(metadata.tables.values())):c.execute(t.delete())
