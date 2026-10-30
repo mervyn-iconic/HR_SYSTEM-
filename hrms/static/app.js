@@ -29,3 +29,6 @@ $('export').onclick=()=>{location.href='/api/records/'+current+'?format=csv'};$(
 api('session').then(async d=>{csrf=d.csrf;await boot()}).catch(()=>{});
 
 window.addEventListener('popstate',()=>{const n=location.hash.slice(1)||'overview';if(Object.keys(schema).length&&(n==='overview'||schema[n]))navigate(n).catch(showError)});
+
+function applyTheme(theme){document.documentElement.dataset.theme=theme;document.querySelectorAll('.theme-toggle').forEach(b=>{b.textContent=theme==='dark'?'Light mode':'Dark mode';b.setAttribute('aria-pressed',String(theme==='dark'))});try{localStorage.setItem('golden-hr-theme',theme)}catch(e){}}
+document.querySelectorAll('.theme-toggle').forEach(b=>b.addEventListener('click',()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark')));applyTheme(document.documentElement.dataset.theme==='dark'?'dark':'light');
