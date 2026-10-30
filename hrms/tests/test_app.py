@@ -5,6 +5,8 @@ os.environ['HR_ADMIN_PASSWORD']='test-only-password'
 from app import app,metadata,engine
 class HRTests(unittest.TestCase):
     def setUp(self):
+        from app import login_attempts
+        login_attempts.clear()
         with engine.begin() as c:
             c.execute(metadata.tables['department'].update().values(manager_id=None))
             for t in reversed(list(metadata.tables.values())):c.execute(t.delete())
@@ -105,6 +107,30 @@ class HRTests(unittest.TestCase):
         bad='job_id,job_title\n100,Should roll back\n100,Repeated ID'
         self.assertEqual(self.bulk('job',bad,False).status_code,400)
         self.assertEqual(next(r['job_title'] for r in self.c.get('/api/records/job').json if r['job_id']==100),'New job')
+    def test_csv_day_first_dates_and_invalid_date_rollback(self):
+        emp,_,_=self.employee()
+        csv=f'employee_id,attendance_date,status\n{emp},30/10/2026,Present\n{emp},01/02/2026,Present\n{emp}, 29-02-2024 ,Present\n{emp},2026-10-31,Present'
+        preview=self.bulk('attendance',csv)
+        self.assertEqual(preview.status_code,200,preview.json)
+        self.assertEqual(self.c.get('/api/summary').json['attendance'],0)
+        self.assertEqual(self.bulk('attendance',csv,False).status_code,200)
+        dates={r['attendance_date'] for r in self.c.get('/api/records/attendance').json}
+        self.assertEqual(dates,{'2026-10-30','2026-02-01','2024-02-29','2026-10-31'})
+        bad=f'employee_id,attendance_date,status\n{emp},01/11/2026,Present\n{emp},31/02/2026,Present'
+        result=self.bulk('attendance',bad,False)
+        self.assertEqual(result.status_code,400)
+        self.assertIn('row 3',result.json['error'])
+        self.assertIn('attendance date',result.json['error'])
+        self.assertEqual(self.c.get('/api/summary').json['attendance'],4)
+    def test_archive_day_first_dates(self):
+        emp,_,_=self.employee()
+        raw=self.c.get('/api/export-all').data
+        import io,zipfile
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            text=archive.read('employee.csv').decode('utf-8-sig').replace('2026-01-01','30/10/2026')
+        result=self.archive_import(self.modify_zip(raw,'employee.csv',text),False)
+        self.assertEqual(result.status_code,200,result.json)
+        self.assertEqual(self.c.get('/api/records/employee').json[0]['hire_date'],'2026-10-30')
     def archive_import(self,raw,preview=True,token=True):
         import io
         return self.c.post('/api/import-all',data={'file':(io.BytesIO(raw),'hr.zip'),'preview':str(preview).lower()},headers={'X-CSRF-Token':self.token} if token else {})

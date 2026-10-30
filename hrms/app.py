@@ -1,5 +1,5 @@
 import os, secrets, csv, io, zipfile, json
-from datetime import date, time, timedelta
+from datetime import date, time, timedelta, datetime
 from time import monotonic
 from threading import Lock
 from decimal import Decimal
@@ -81,6 +81,13 @@ def serialize(row): return {k:str(v) if isinstance(v,(date,time,Decimal)) else v
 def get_table(name):
     if name not in tables: raise ValueError('Unknown table')
     return tables[name]
+def parse_record_date(value,field):
+    text=str(value).strip()
+    for pattern in ('%Y-%m-%d','%d/%m/%Y','%d-%m-%Y'):
+        try: return datetime.strptime(text,pattern).date()
+        except ValueError: pass
+    raise ValueError(field.replace('_',' ')+': invalid date '+repr(text)+'. Use YYYY-MM-DD or DD/MM/YYYY (day first).')
+
 def record_values(name,t,data,conn,record_id=None):
     pk=list(t.primary_key)[0]
     values={}
@@ -88,7 +95,7 @@ def record_values(name,t,data,conn,record_id=None):
         if key not in t.c or t.c[key].primary_key: raise ValueError('Unknown or read-only field: '+key)
         c=t.c[key]
         if value in ('',None): value=None
-        elif str(c.type)=='DATE': value=date.fromisoformat(value)
+        elif str(c.type)=='DATE': value=parse_record_date(value,key)
         elif str(c.type)=='TIME': value=time.fromisoformat(value)
         elif str(c.type)=='INTEGER': value=int(value)
         elif str(c.type).startswith('NUMERIC'): value=Decimal(str(value))
